@@ -1,17 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type User struct {
-	Name  string `json:"name" validate:"required"`
-	Email string `json:"email" validate:"required,email"`
-	Phone string `json:"phone" validate:"required"`
+	gorm.Model
+	Name     string `json:"name" validate:"required" gorm:"type:varchar(100);not null"`
+	Email    string `json:"email" validate:"required,email" gorm:"type:varchar(300);not null;uniqueIndex"`
+	Phone    string `json:"phone" validate:"required,min=11" gorm:"type:varchar(11);not null;uniqueIndex"`
+	Password string `json:"password" validate:"required,min=8" gorm:""`
 }
 
 type CustomValidator struct {
@@ -27,6 +32,20 @@ func (cv *CustomValidator) Validate(i any) error {
 }
 
 func main() {
+
+	dsn := "host=localhost user=postgres password=postgres dbname=gotickets port=5432 sslmode=disable TimeZone=Asia/Shanghai"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		TranslateError: true, // only development environment
+	})
+
+	if err != nil {
+		panic("failed to connect database")
+	} else {
+		fmt.Println("Connected to database......")
+	}
+
+	db.AutoMigrate(&User{})
+
 	e := echo.New()
 	e.Validator = &CustomValidator{validator: validator.New()}
 
@@ -39,18 +58,25 @@ func main() {
 
 	e.POST("/user", func(c *echo.Context) error {
 
-		u := new(User)
+		newUser := new(User)
 
 		// binding the user
-		if err := c.Bind(u); err != nil {
-			return err
+		if err := c.Bind(newUser); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
 
 		// validating
-		if err := c.Validate(u); err != nil {
+		if err := c.Validate(newUser); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
-		return c.JSON(http.StatusOK, u)
+
+		// save to database
+		result := db.Create(newUser)
+		if result.Error != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]any{"error": result.Error.Error()})
+		}
+
+		return c.JSON(http.StatusOK, newUser)
 
 	})
 
