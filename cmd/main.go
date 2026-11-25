@@ -28,6 +28,7 @@ func (cv *CustomValidator) Validate(i any) error {
 
 func main() {
 	e := echo.New()
+	e.Validator = &CustomValidator{validator: validator.New()}
 
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
@@ -36,18 +37,18 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{"message": "Hello, World!"})
 	})
 
-	e.POST("user", func(c *echo.Context) error {
+	e.POST("/user", func(c *echo.Context) error {
 
 		u := new(User)
 
-    // binding the user
-		if err := c.Bind(&u); err != nil {
+		// binding the user
+		if err := c.Bind(u); err != nil {
 			return err
 		}
 
-    // validatin
-		if err := c.Validate(&u); err != nil {
-			return err
+		// validating
+		if err := c.Validate(u); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, u)
 
@@ -57,3 +58,10 @@ func main() {
 		e.Logger.Error("failed to start server", "error", err)
 	}
 }
+
+// example body to be sent
+// {
+//     "name": "John Doe",
+//     "email": "[EMAIL_ADDRESS]",
+//     "phone": "1234567890"
+// }
